@@ -1,3 +1,4 @@
+
 'use client';
 import { AppShell } from '@/components/layout/AppShell';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -8,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/use-auth';
-import { Camera, Copy, Download, FileUp, HelpCircle, Loader2, Share2, AlertTriangle } from 'lucide-react';
+import { Camera, Copy, Download, FileUp, HelpCircle, Loader2, Share2, AlertTriangle, TrendingUp, Lightbulb, DollarSign } from 'lucide-react';
 import Image from 'next/image';
 import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
