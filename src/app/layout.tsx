@@ -5,13 +5,13 @@ import './globals.css';
 import { Providers } from '@/components/Providers';
 import { Toaster } from "@/components/ui/toaster";
 
-const geistSans = GeistSans({
-  variable: '--font-geist-sans',
-});
+// const geistSans = GeistSans({ // Removed: GeistSans is an object, not a function
+//   variable: '--font-geist-sans',
+// });
 
-const geistMono = GeistMono({
-  variable: '--font-geist-mono',
-});
+// const geistMono = GeistMono({ // Removed: GeistMono is an object, not a function
+//   variable: '--font-geist-mono',
+// });
 
 export const metadata: Metadata = {
   title: 'ChartVisionAI',
@@ -25,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
+      <body className={`${GeistSans.variable} ${GeistMono.variable} font-sans antialiased`}>
         <Providers>
           {children}
           <Toaster />
