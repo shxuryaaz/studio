@@ -7,18 +7,24 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/use-auth';
-import { Camera, Copy, Download, FileUp, HelpCircle, Loader2, Share2, AlertTriangle, TrendingUp, Lightbulb, DollarSign } from 'lucide-react';
+import { Camera, Copy, Download, FileUp, HelpCircle, Loader2, Share2, TrendingUp, Lightbulb, DollarSign } from 'lucide-react';
 import Image from 'next/image';
 import React, { useState, useRef, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
-// Placeholder data for chart analysis results
-const placeholderAnalysis = {
-  trend: { title: "Trend Analysis", content: "Uptrend detected with high confidence.", icon: <TrendingUp className="h-5 w-5 text-green-500" /> },
-  explanation: { title: "Chart Explanation", content: "This is a candlestick chart showing price action over time. Key indicators include Moving Averages and RSI.", icon: <Lightbulb className="h-5 w-5 text-yellow-500" /> },
-  suggestion: { title: "Trade Suggestion", content: "Consider a 'Buy' position. Confidence: 85%. Rationale: Strong uptrend and bullish indicators.", icon: <DollarSign className="h-5 w-5 text-blue-500" /> },
+import { analyzeChartTrend } from '@/ai/flows/analyze-chart-trend';
+import { explainChart } from '@/ai/flows/explain-chart';
+import { generateTradeSuggestion } from '@/ai/flows/generate-trade-suggestion';
+
+// Helper function to read file as data URI
+const readFileAsDataURI = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 };
 
 export default function DashboardPage() {
@@ -28,8 +34,12 @@ export default function DashboardPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [analysisType, setAnalysisType] = useState<string>('');
-  const [analysisResult, setAnalysisResult] = useState<any | null>(null); // Replace 'any' with specific result types later
+  const [analysisResult, setAnalysisResult] = useState<{ title: string; content: string; icon: JSX.Element } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [chartTypeForAnalysis, setChartTypeForAnalysis] = useState('');
+  const [indicatorsForAnalysis, setIndicatorsForAnalysis] = useState('');
+
 
   useEffect(() => {
     if (selectedFile) {
@@ -60,19 +70,62 @@ export default function DashboardPage() {
     setIsLoading(true);
     setAnalysisResult(null);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const chartDataUri = await readFileAsDataURI(selectedFile);
+      let resultData = null;
 
-    // This is where you would call the actual GenAI functions
-    // For now, using placeholder data based on analysisType
-    let resultData = null;
-    if (analysisType === 'trend') resultData = placeholderAnalysis.trend;
-    else if (analysisType === 'explanation') resultData = placeholderAnalysis.explanation;
-    else if (analysisType === 'suggestion') resultData = placeholderAnalysis.suggestion;
-    
-    setAnalysisResult(resultData);
-    setIsLoading(false);
-    toast({ title: "Analysis Complete", description: `Showing results for ${analysisType} analysis.` });
+      if (analysisType === 'trend') {
+        const apiResponse = await analyzeChartTrend({ chartDataUri });
+        resultData = {
+          title: "Trend Analysis",
+          content: `Trend: ${apiResponse.trend}\nConfidence: ${(apiResponse.confidence * 100).toFixed(0)}%`,
+          icon: <TrendingUp className="h-5 w-5 text-green-500" />
+        };
+      } else if (analysisType === 'explanation') {
+        if (!chartTypeForAnalysis.trim()) {
+          toast({ title: "Input Missing", description: "Please enter the chart type.", variant: "destructive" });
+          setIsLoading(false);
+          return;
+        }
+        const apiResponse = await explainChart({ chartType: chartTypeForAnalysis, technicalIndicators: indicatorsForAnalysis });
+        resultData = {
+          title: "Chart Explanation",
+          content: apiResponse.explanation,
+          icon: <Lightbulb className="h-5 w-5 text-yellow-500" />
+        };
+      } else if (analysisType === 'suggestion') {
+         if (!chartTypeForAnalysis.trim()) {
+          toast({ title: "Input Missing", description: "Please enter the chart type for context.", variant: "destructive" });
+          setIsLoading(false);
+          return;
+        }
+        const explanationForSuggestion = `User-provided chart type: ${chartTypeForAnalysis}. User-provided indicators: ${indicatorsForAnalysis || 'not specified'}.`;
+        const apiResponse = await generateTradeSuggestion({ 
+          chartDataUri, 
+          chartType: chartTypeForAnalysis, 
+          identifiedPattern: "User-provided context for direct suggestion", 
+          explanation: explanationForSuggestion
+        });
+        resultData = {
+          title: "Trade Suggestion",
+          content: `Suggestion: ${apiResponse.suggestion}\nConfidence: ${(apiResponse.confidence * 100).toFixed(0)}%\nReason: ${apiResponse.reason}`,
+          icon: <DollarSign className="h-5 w-5 text-blue-500" />
+        };
+      }
+      
+      setAnalysisResult(resultData);
+      toast({ title: "Analysis Complete", description: `Showing results for ${analysisType} analysis.` });
+    } catch (error: any) {
+      console.error("Error during AI analysis:", error);
+      toast({ 
+        title: "Analysis Failed", 
+        description: error.message || "An unexpected error occurred with the AI analysis.", 
+        variant: "destructive" 
+      });
+      setAnalysisResult(null);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleTryAnother = () => {
@@ -80,6 +133,8 @@ export default function DashboardPage() {
     setPreviewUrl(null);
     setAnalysisResult(null);
     setAnalysisType('');
+    setChartTypeForAnalysis('');
+    setIndicatorsForAnalysis('');
     if (fileInputRef.current) {
       fileInputRef.current.value = ""; // Reset file input
     }
@@ -95,6 +150,8 @@ export default function DashboardPage() {
       </AppShell>
     );
   }
+
+  const showContextualInputs = analysisType === 'explanation' || analysisType === 'suggestion';
 
   return (
     <AppShell>
@@ -165,22 +222,41 @@ export default function DashboardPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {/* Placeholder for other options like chart type, indicators input */}
-              {analysisType === 'explanation' && (
-                 <div>
-                    <Label htmlFor="chartTypeInput">Chart Type (e.g., Candlestick)</Label>
-                    <Input id="chartTypeInput" placeholder="Enter chart type" />
-                 </div>
-              )}
-              {analysisType === 'explanation' && (
-                 <div>
-                    <Label htmlFor="indicatorsInput">Technical Indicators (comma-separated)</Label>
-                    <Input id="indicatorsInput" placeholder="e.g., RSI, MACD" />
-                 </div>
+              
+              {showContextualInputs && (
+                 <>
+                    <div>
+                        <Label htmlFor="chartTypeInput">Chart Type (e.g., Candlestick)</Label>
+                        <Input 
+                            id="chartTypeInput" 
+                            placeholder="Enter chart type" 
+                            value={chartTypeForAnalysis}
+                            onChange={(e) => setChartTypeForAnalysis(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="indicatorsInput">Technical Indicators (comma-separated)</Label>
+                        <Input 
+                            id="indicatorsInput" 
+                            placeholder="e.g., RSI, MACD (optional)"
+                            value={indicatorsForAnalysis}
+                            onChange={(e) => setIndicatorsForAnalysis(e.target.value)} 
+                        />
+                    </div>
+                 </>
               )}
             </CardContent>
             <CardFooter>
-              <Button onClick={handleAnalyze} disabled={isLoading || !selectedFile || !analysisType} className="w-full">
+              <Button 
+                onClick={handleAnalyze} 
+                disabled={
+                    isLoading || 
+                    !selectedFile || 
+                    !analysisType ||
+                    ( (analysisType === 'explanation' || analysisType === 'suggestion') && !chartTypeForAnalysis.trim() )
+                } 
+                className="w-full"
+               >
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Analyze Chart
               </Button>
@@ -202,7 +278,7 @@ export default function DashboardPage() {
               <CardHeader>
                 <CardTitle className="flex items-center">
                     {analysisResult.icon}
-                    {analysisResult.title}
+                    <span className="ml-2">{analysisResult.title}</span>
                 </CardTitle>
                 <CardDescription>AI Analysis - {new Date().toLocaleString()}</CardDescription>
               </CardHeader>
@@ -259,3 +335,4 @@ export default function DashboardPage() {
     </AppShell>
   );
 }
+
